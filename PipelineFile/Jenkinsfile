@@ -1,0 +1,63 @@
+pipeline {
+    agent {
+        label '13.201.224.1' #the EC2 instance that has been configured slave
+    }
+
+    tools {
+        jdk 'JDK 11'
+        maven 'Maven3'
+    }
+
+    stages {
+        stage('Git Checkout') {
+            steps {
+                git branch: 'main', 
+                    changelog: false, 
+                    credentialsId: '22880547-699c-4f57-936d-6df8d71c4533', 
+                    poll: false, 
+                    url: 'https://github.com/hariwhois23/DevSecOps-Project-01.git'
+            }
+        }
+
+        stage('Compilation Stage') {
+            steps {
+                sh 'mvn clean compile -DskipTests=true'
+            }
+        }
+
+        stage('OWASP Compliance Check') {
+            steps {
+                dependencyCheck additionalArguments: '--scan .', odcInstallation: 'DP'
+            }
+            post {
+                always {
+                    dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+                }
+            }
+        }
+
+        stage('Application building stage') {
+            steps {
+                sh 'mvn clean package -DskipTests=true'
+            }
+        }
+
+        stage('Docker build') {
+            steps {
+                script{
+                    withDockerRegistry(credentialsId: '048a0ddb-9010-4045-acdf-f84b75eab7b0', toolName: 'Docker') {
+                        sh "docker build -t shopping-cart -f docker/Dockerfile ."
+                        sh "docker tag shopping-cart h44i/projects:Jenkins-DevSecOps"
+                        sh "docker push h44i/projects:Jenkins-DevSecOps"
+}
+                }
+            }
+        }
+        stage("Deploy"){
+            steps{
+                sh "docker run -d --name shop -p 8070:8070 h44i/projects:Jenkins-DevSecOps"
+            }
+        }
+
+    }
+}
